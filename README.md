@@ -41,7 +41,7 @@
 3. Скомпилируйте проект:
 
    ```bash
-   g++ packer.cpp -o packer -lkeystone -lelfio
+   g++ packer.cpp -o packer -lkeystone 
    ```
 
 ## Использование
