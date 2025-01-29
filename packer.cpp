@@ -119,11 +119,13 @@ int NOPInjectionELF(const string &filename, int count_nops = 10, uint64_t target
 
 void printHelp() {
     cout << "Usage:\n"
-              << "  -f <filename>   Specify ELF file to modify\n"
-              << "  -ni             Inject NOPs into .text section\n"
-              << "  -s              Encrypt strings in .rodata\n"
-              << "  -k <key>        Set XOR key for string encryption (default: 0xAA)\n"
-              << "  -h              Show this help message\n";
+         << "  -f <filename>   Specify ELF file to modify\n"
+         << "  -ni             Inject NOPs into .text section\n"
+         << "  -s              Encrypt strings in .rodata\n"
+         << "  -k <key>        Set XOR key for string encryption (default: 0xAA)\n"
+         << "  -addr <address> Set address to inject NOPs (in hexadecimal format)\n"
+         << "  -end            Patch NOPs at the end of .text section instead of a specific address\n"
+         << "  -h              Show this help message\n";
 }
 int main(int argc, char *argv[]) {
     cout << " ▄▀▀▄▀▀▀▄  ▄▀▀█▄   ▄▀▄▄▄▄   ▄▀▀▄ █  ▄▀▀█▄▄▄▄  ▄▀▀▄▀▀▀▄ \n"
