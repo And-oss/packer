@@ -1,5 +1,5 @@
 
-# Packer - ELF File Packer & Obfuscator
+# Packer - ELF File Obfuscator
 
 `packer` — это инструмент для обфускации и модификации ELF-файлов. Он поддерживает несколько техник, таких как:
 
