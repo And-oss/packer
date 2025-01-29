@@ -116,7 +116,6 @@ int NOPInjectionELF(const string &filename, int count_nops = 10, uint64_t target
     return -1;
 }
 
-
 void printHelp() {
     cout << "Usage:\n"
          << "  -f <filename>   Specify ELF file to modify\n"
@@ -125,8 +124,10 @@ void printHelp() {
          << "  -k <key>        Set XOR key for string encryption (default: 0xAA)\n"
          << "  -addr <address> Set address to inject NOPs (in hexadecimal format)\n"
          << "  -end            Patch NOPs at the end of .text section instead of a specific address\n"
+         << "  -n <num>        Set number of NOPs to inject (default: 10)\n"
          << "  -h              Show this help message\n";
 }
+
 int main(int argc, char *argv[]) {
     cout << " ▄▀▀▄▀▀▀▄  ▄▀▀█▄   ▄▀▄▄▄▄   ▄▀▀▄ █  ▄▀▀█▄▄▄▄  ▄▀▀▄▀▀▀▄ \n"
             "█   █   █ ▐ ▄▀ ▀▄ █ █    ▌ █  █ ▄▀ ▐  ▄▀   ▐ █   █   █ \n"
@@ -135,7 +136,6 @@ int main(int argc, char *argv[]) {
             " ▄▀       █   ▄▀   ▄▀▄▄▄▄▀ ▄▀   █   ▄▀▄▄▄▄   █     █   \n"
             "█         ▐   ▐   █     ▐  █    ▐   █    ▐   ▐     ▐   \n"
             "▐                 ▐        ▐        ▐                  " << endl;
-
 
     if (argc < 2) {
         printHelp();
@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
     uint8_t xorKey = 0xAA; // Default XOR key
     uint64_t targetAddr = 0;
     bool patchEnd = false;
-    int nopCount = 10;
+    int nopCount = 10; // Default NOP count
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
@@ -195,6 +195,18 @@ int main(int argc, char *argv[]) {
             }
         } else if (arg == "-end") {
             patchEnd = true;
+        } else if (arg == "-n") {
+            if (i + 1 < argc) {
+                stringstream ss(argv[++i]);
+                ss >> nopCount;
+                if (ss.fail() || nopCount <= 0) {
+                    cerr << "[ERROR] Invalid NOP count! Must be a positive integer.\n";
+                    return 1;
+                }
+            } else {
+                cerr << "[ERROR] Missing number of NOPs after -n\n";
+                return 1;
+            }
         }
     }
 
