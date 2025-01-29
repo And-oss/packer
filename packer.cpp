@@ -7,7 +7,7 @@
 #include "elfio/elfio.hpp"
 #include "keystone/keystone.h"
 
-using namespace std;ar
+using namespace std;
 
 
 // [BUILD] g++ packer.cpp -o packer -lkeystone
