@@ -7,50 +7,13 @@
 #include "elfio/elfio.hpp"
 #include "keystone/keystone.h"
 
+#include "src/headers/Encryption.h"
+#include "src/Encryption.cpp"
+
 using namespace std;
 
 
 // [BUILD] g++ packer.cpp -o packer -lkeystone
-
-void encryptStrings(const string &filename, uint8_t key) {
-    ELFIO::elfio reader;
-
-    if (!reader.load(filename)) {
-        cerr << "[ERROR] Ошибка загрузки ELF!\n";
-        return;
-    }
-
-    for (int i = 0; i < reader.sections.size(); ++i) {
-        ELFIO::section *sec = reader.sections[i];
-
-        if (sec->get_name() == ".rodata") {
-            cout << "[INFO] FOUND .rodata\n";
-
-            vector<char> data(sec->get_size());
-            memcpy(data.data(), sec->get_data(), sec->get_size());
-
-            for (char &c : data) c ^= key;
-
-            streampos offset = sec->get_offset();
-            cout << "[LEAK] .rodata offset: " << offset << "\n";
-
-            fstream file(filename, ios::in | ios::out | ios::binary);
-            if (!file) {
-                cerr << "[ERROR] Ошибка открытия ELF-файла для записи!\n";
-                return;
-            }
-
-            file.seekp(offset);
-            file.write(data.data(), data.size());
-            file.close();
-
-            cout << "[SUCCESS] Строки в .rodata зашифрованы с ключом " << hex << "0x" << (int)key << "!\n";
-            return;
-        }
-    }
-
-    cerr << "[ERROR] Секция .rodata не найдена!\n";
-}
 
 int NOPInjectionELF(const string &filename, int count_nops = 10, uint64_t target_addr = 0, bool patch_end = false) {
     ELFIO::elfio reader;
@@ -220,7 +183,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (stringObfuscation) {
-        encryptStrings(filename, xorKey);
+        encryption::encryptStrings(filename, xorKey);
     }
 
     return 0;
