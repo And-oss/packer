@@ -90,7 +90,7 @@ void printHelp() {
          << "  -n <num>        Set number of NOPs to inject (default: 10)\n"
          << "  -h              Show this help message\n"
          << "  -es             Encrypt section\n"
-         << "  -t              Text which will add into function's name\n";
+         << "  -t              section's name or some text\n";
 }
 
 int main(int argc, char *argv[]) {
