@@ -13,7 +13,7 @@
 using namespace std;
 
 
-// [BUILD] g++ packer.cpp -o packer -lkeystone
+// [BUILD]  g++ packer.cpp -o packer -lkeystone -ldl
 
 int NOPInjectionELF(const string &filename, int count_nops = 10, uint64_t target_addr = 0, bool patch_end = false) {
     ELFIO::elfio reader;
@@ -88,7 +88,9 @@ void printHelp() {
          << "  -addr <address> Set address to inject NOPs (in hexadecimal format)\n"
          << "  -end            Patch NOPs at the end of .text section instead of a specific address\n"
          << "  -n <num>        Set number of NOPs to inject (default: 10)\n"
-         << "  -h              Show this help message\n";
+         << "  -h              Show this help message\n"
+         << "  -es             Encrypt section\n"
+         << "  -t              Text which will add into function's name\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -108,11 +110,15 @@ int main(int argc, char *argv[]) {
     string filename;
     bool nopInjection = false;
     bool stringObfuscation = false;
-    uint8_t xorKey = 0xAA; // Default XOR key
-    uint64_t targetAddr = 0;
+    bool encryptSection = false;
     bool patchEnd = false;
-    int nopCount = 10; // Default NOP count
 
+    uint8_t xorKey = 0xAA; // Default XOR key
+    int nopCount = 10; // Default NOP count
+    uint64_t targetAddr = 0; // Default Target Address
+    std::string text = ".text"; // Default Text
+
+    // Обработка аргументов командной строки
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
 
@@ -170,20 +176,35 @@ int main(int argc, char *argv[]) {
                 cerr << "[ERROR] Missing number of NOPs after -n\n";
                 return 1;
             }
+        } else if (arg == "-es") {
+            encryptSection = true;
+        } else if (arg == "-t") {  // Обработка аргумента -t для добавления текста в имена функций
+            if (i + 1 < argc) {
+                text = argv[++i]; // Считываем строку, которую нужно добавить в имя функции
+            } else {
+                cerr << "[ERROR] Missing text after -t\n";
+                return 1;
+            }
         }
     }
 
+    // Проверка на отсутствие имени файла
     if (filename.empty()) {
         cerr << "[ERROR] No filename specified!\n";
         return 1;
     }
 
+    // Выполнение различных операций в зависимости от флагов
     if (nopInjection) {
         NOPInjectionELF(filename, nopCount, targetAddr, patchEnd);
     }
 
     if (stringObfuscation) {
         encryption::encryptStrings(filename, xorKey);
+    }
+
+    if (encryptSection) {
+        encryption::encryptSection(filename, text , xorKey);
     }
 
     return 0;
