@@ -1,97 +1,155 @@
+# Advanced ELF Packer and Obfuscator
 
-# Packer - ELF File Obfuscator
+A sophisticated tool for packing, obfuscating, and protecting ELF binaries. Provides multi-layered protection against reverse engineering and analysis tools like IDA Pro.
 
-`packer` — это инструмент для обфускации и модификации ELF-файлов. Он поддерживает несколько техник, таких как:
+## Features
 
-- Шифрование строк с помощью XOR.
-- Инъекция NOP-ов в секцию `.text`.
+- **UPX-like Packing with PCK Headers**: Compress executables with our proprietary PCK format that completely prevents IDA analysis(in dev)
+- **String Obfuscation**: Multiple methods to encrypt strings
+  - Basic string encryption (simple XOR)
+  - Advanced multi-layered string encryption (IDA-resistant)
+- **Section Encryption**: Encrypt any section of the ELF file
+- **Memory Protection**: Hide and protect data in memory at runtime(in dev)
+- **Code Virtualization**: Convert native code to custom bytecode executed by a virtual machine(in dev)
+- **Anti-Debugging**: Multiple techniques to prevent runtime analysis
+- **NOP Injection**: Add noise to code sections
+- **Full Protection Mode**: Apply all protections in an optimal sequence(in dev)
 
-## Возможности
+## Building
 
-1. **Шифрование строк в секции `.rodata`:**
-   - Использует простой XOR с заданным ключом для шифрования строк в ELF-файле.
+```bash
+g++ packer.cpp src/Encryption.cpp -o packer -std=c++17 -ldl -Isrc/header
+```
 
-2. **Инъекция NOP-ов в секцию `.text`:**
-   - Вставка NOP-инструкций в начало или в произвольные адреса секции `.text`.
-   - Заполнение конца секции NOP-ами.
+## Usage
 
-## Установка
-
-Для сборки проекта требуется установить зависимости:
-
-- [ELFIO](https://github.com/elfio/elfio) — библиотека для работы с ELF-файлами.
-- [Keystone](https://www.keystone-engine.org/) — ассемблер для генерации машинного кода.
-
-### Сборка
-
-1. Клонируйте репозиторий:
-
-   ```bash
-   git clone https://github.com/And-oss/packer.git
-   cd packer
-   ```
-
-2. Установите зависимости (например, с помощью `git`):
-
-   ```bash
-   git clone https://github.com/keystone-engine/keystone
-   git clone https://github.com/serge1/ELFIO
-   ```
-
-3. Скомпилируйте проект:
-
-   ```bash
-   g++ packer.cpp -o packer -lkeystone 
-   ```
-
-## Использование
-
-### Основной синтаксис
+Basic usage pattern:
 
 ```bash
 ./packer -f <filename> [options]
 ```
 
-### Параметры
+### Command-line Options
 
-- `-f <filename>` — путь к ELF-файлу для обработки (обязательный параметр).
-- `-h` — выводит справку о параметрах.
-- `-ni` — инъекция NOP-ов в секцию `.text`.
-- `-s` — шифрование строк в секции `.rodata`.
-- `-k <key>` — ключ для шифрования строк (XOR-ключ, в шестнадцатеричной форме).
-- `-addr <address>` — адрес для инъекции NOP-ов (по умолчанию инъекция в начало).
-- `-end` — заполняет конец секции `.text` NOP-ами.
+```
+  -f <filename>   Specify ELF file to modify
+  -ni             Inject NOPs into .text section
+  -s              Encrypt strings in .rodata
+  -as             Advanced string obfuscation (IDA-resistant)
+  -k <key>        Set XOR key for string encryption (default: 0xAA)
+  -k1 <key>       Set first key for advanced string obfuscation
+  -k2 <key>       Set second key for advanced string obfuscation
+  -addr <address> Set address to inject NOPs (in hexadecimal format)
+  -end            Patch NOPs at the end of .text section instead of a specific address
+  -n <num>        Set number of NOPs to inject (default: 10)
+  -h              Show this help message
+  -es             Encrypt section
+  -t              section's name or some text
+  -pack           Pack the executable (UPX-like functionality with PCK format)
+  -unpack         Unpack a previously packed executable
+  -mem            Apply memory obfuscation techniques
+  -vm             Apply code virtualization (strongest protection against IDA)
+  -anti-dbg       Add anti-debugging protection
+  -full           Apply full protection (all techniques combined)
+  -check          Check if a file has PCK protection
+```
 
-### Примеры
+## Examples
 
-1. **Шифрование строк в секции `.rodata` с ключом `0xAA`:**
+### Basic String Encryption
 
-   ```bash
-   ./packer -f my_binary -s -k 0xAA
-   ```
+```bash
+./packer -f myprogram -s -k 0x42
+```
 
-2. **Инъекция 10 NOP-ов в начало секции `.text`:**
+This will encrypt all strings in the `.rodata` section with the key `0x42`.
 
-   ```bash
-   ./packer -f my_binary -ni
-   ```
+### Advanced String Obfuscation (IDA-resistant)
 
-3. **Инъекция 5 NOP-ов по адресу `0x401000` в секции `.text`:**
+```bash
+./packer -f myprogram -as -k1 0xBB -k2 0xCC
+```
 
-   ```bash
-   ./packer -f my_binary -ni -addr 0x401000 -k 0x55
-   ```
+This applies multi-layered encryption to strings, making them extremely difficult to recover statically.
 
-4. **Заполнение конца секции `.text` NOP-ами:**
+### PCK Format Packing (Maximum IDA Protection)
 
-   ```bash
-   ./packer -f my_binary -ni -end
-   ```
+```bash
+./packer -f myprogram -pack
+```
 
-5. **Комбинированное использование:**
+Compresses and encrypts the executable with our proprietary PCK format, adding a runtime unpacker that completely prevents IDA from analyzing the code.
 
-   ```bash
-   ./packer -f my_binary -ni -addr 0x401050 -end -s -k 0x42
-   ```
+### Verify PCK Protection
 
-   В этом примере: инъекция NOP-ов по адресу `0x401050`, очистка конца секции `.text` и шифрование строк с ключом `0x42`.
+```bash
+./packer -f myprogram.packed -check
+```
+
+Checks if a file has been protected with the PCK format.
+
+### Memory Protection
+
+```bash
+./packer -f myprogram -mem
+```
+
+Adds runtime memory protection to hide sensitive data from memory scanners.
+
+### Code Virtualization
+
+```bash
+./packer -f myprogram -vm
+```
+
+Converts portions of native code to a custom bytecode that runs in a virtual machine, extremely effective against disassemblers.
+
+### Full Protection
+
+```bash
+./packer -f myprogram -full
+```
+
+Applies all protection techniques in an optimal sequence for maximum security, including PCK headers.
+
+## Protecting Critical Sections
+
+To encrypt a specific section:
+
+```bash
+./packer -f myprogram -es -t .data -k 0xFF
+```
+
+## PCK Format Specification
+
+The PCK format is our proprietary packing format that is specifically designed to defeat IDA Pro:
+
+1. **PCK Header Signature**: Each protected file includes a "PCK" signature that identifies it as protected
+2. **Multi-Layer Encryption**: Uses multiple encryption layers for each section (XOR, bit rotation, byte swapping)
+3. **Deceptive Code**: Fills original sections with valid-looking but nonsensical code patterns that crash decompilers
+4. **Anti-Analysis Mechanisms**: Detects and prevents static and dynamic analysis(in dev)
+5. **Self-Modifying Unpacker**: Runtime unpacker modifies itself during execution(in dev)
+
+## Anti-IDA Features(in dev)
+
+This packer implements multiple techniques that specifically target and defeat IDA Pro's analysis capabilities:
+
+1. **Multi-layered string encryption**: Uses multiple transformations to prevent automatic recovery
+2. **Code virtualization**: Custom bytecode execution prevents accurate disassembly
+3. **Garbage code generation**: Inserts misleading code patterns that break IDA's analysis
+4. **Memory obfuscation**: Prevents memory dumps and analysis
+5. **Opaque predicates**: Uses complex logic constructs that cannot be simplified statically
+6. **Self-modifying code**: Changes itself at runtime to defeat static analysis
+7. **Anti-debugging**: Detects and prevents debugging sessions
+8. **PCK headers**: Signed format that identifies protected files and creates custom sections (.PCK and .unpacker)
+
+## Limitations
+
+- Some protections require sufficient privileges to run properly
+- Heavily obfuscated executables may run slower than the original
+- For maximum protection, combine multiple techniques
+- PCK protection is designed to be permanent - once packed, a file cannot be unpacked while preserving the exact original code
+
+## Warning
+
+This tool is designed for legitimate software protection purposes. Use responsibly and legally.
