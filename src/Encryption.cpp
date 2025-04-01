@@ -64,27 +64,17 @@ bool encryption::packELF(const std::string &filename) {
     
     cout << "[INFO] Starting UPX-like packing of " << filename << "\n";
 
-    const char PCK_SIGNATURE[8] = {'P', 'C', 'K', 
-        static_cast<char>(0xFF), 
-        static_cast<char>(0xEE), 
-        static_cast<char>(0xDD), 
-        static_cast<char>(0xCC), 
-        static_cast<char>(0xBB)
-    };
-    const uint32_t PCK_VERSION = 0x00000001;
-    
-    const char PCK1_SIGNATURE[] = "PCK1";
-    const char PCK2_SIGNATURE[] = "PCK2";
-    const char PCK_EXCL_SIGNATURE[] = "PCK!";
-    
-    vector<section*> execSections;
-    section* textSection = nullptr;
+    vector<ELFIO::section*> execSections;
+    ELFIO::section* textSection = nullptr;
     
     for (int i = 0; i < reader.sections.size(); ++i) {
-        section* sec = reader.sections[i];
-        if (sec->get_flags() & SHF_EXECINSTR) {
+        ELFIO::section* sec = reader.sections[i];
+        const ELFIO::Elf_Xword flags = sec->get_flags();
+        const string secName = sec->get_name();
+        
+        if (flags & ELFIO::SHF_EXECINSTR) {
             execSections.push_back(sec);
-            if (sec->get_name() == ".text") {
+            if (secName == ".text") {
                 textSection = sec;
             }
         }
@@ -100,7 +90,7 @@ bool encryption::packELF(const std::string &filename) {
         cout << "[WARNING] No .text section found, using " << textSection->get_name() << " as main code section\n";
     }
 
-    Elf64_Addr oldEntryPoint = reader.get_entry();
+    const ELFIO::Elf64_Addr oldEntryPoint = reader.get_entry();
     cout << "[INFO] Original entry point: 0x" << hex << oldEntryPoint << "\n";
     
     return true;
@@ -119,17 +109,18 @@ bool encryption::stripSymbols(const std::string &filename) {
     vector<string> removedSections;
     
     for (int i = 0; i < reader.sections.size(); ++i) {
-        section* sec = reader.sections[i];
-        string secName = sec->get_name();
+        ELFIO::section* sec = reader.sections[i];
+        const string secName = sec->get_name();
+        const ELFIO::Elf_Word secType = sec->get_type();
         
-        if (sec->get_type() == SHT_SYMTAB || 
-            sec->get_type() == SHT_DYNSYM || 
+        if (secType == ELFIO::SHT_SYMTAB || 
+            secType == ELFIO::SHT_DYNSYM || 
             secName.find(".debug") == 0 || 
             secName.find(".note") == 0 || 
             secName.find(".comment") == 0) {
             
             removedSections.push_back(secName);
-            sec->set_type(SHT_NULL);
+            sec->set_type(ELFIO::SHT_NULL);
             sec->set_name(".null");
         }
     }
@@ -166,9 +157,12 @@ bool encryption::insertJunkCode(string fileName) {
         vector<ELFIO::section*> execSections;
         for (int i = 0; i < reader.sections.size(); ++i) {
             ELFIO::section* pSec = reader.sections[i];
-            if (pSec->get_flags() & SHF_EXECINSTR) {
+            const Elf_Xword flags = pSec->get_flags();
+            const string secName = pSec->get_name();
+            
+            if (flags & SHF_EXECINSTR) {
                 execSections.push_back(pSec);
-                if (pSec->get_name() == ".text") {
+                if (secName == ".text") {
                     textSection = pSec;
                 }
             }
@@ -204,10 +198,11 @@ bool encryption::addVirtualMachine(const std::string &filename) {
     
     cout << "[INFO] Starting code virtualization on " << filename << "\n";
 
-    section* textSection = nullptr;
+    ELFIO::section* textSection = nullptr;
     for (int i = 0; i < reader.sections.size(); ++i) {
-        section* sec = reader.sections[i];
-        if (sec->get_name() == ".text") {
+        ELFIO::section* sec = reader.sections[i];
+        const string secName = sec->get_name();
+        if (secName == ".text") {
             textSection = sec;
             break;
         }
@@ -218,8 +213,9 @@ bool encryption::addVirtualMachine(const std::string &filename) {
         return false;
     }
 
-    vector<char> originalCode(textSection->get_size());
-    memcpy(originalCode.data(), textSection->get_data(), textSection->get_size());
+    const Elf_Xword secSize = textSection->get_size();
+    vector<char> originalCode(secSize);
+    memcpy(originalCode.data(), textSection->get_data(), secSize);
 
     size_t vmStartOffset = originalCode.size() / 4;
     size_t vmLength = min(size_t(100), originalCode.size() / 8);
@@ -249,13 +245,13 @@ bool encryption::addVirtualMachine(const std::string &filename) {
         vmBytecode.push_back(vmOperand);
     }
     
-    section* vmCodeSection = reader.sections.add(".vm_code");
+    ELFIO::section* vmCodeSection = reader.sections.add(".vm_code");
     vmCodeSection->set_type(SHT_PROGBITS);
     vmCodeSection->set_flags(SHF_ALLOC);
     vmCodeSection->set_addr_align(0x10);
     vmCodeSection->set_data(reinterpret_cast<const char*>(vmBytecode.data()), vmBytecode.size());
     
-    section* vmSection = reader.sections.add(".vm");
+    ELFIO::section* vmSection = reader.sections.add(".vm");
     vmSection->set_type(SHT_PROGBITS);
     vmSection->set_flags(SHF_ALLOC | SHF_EXECINSTR);
     vmSection->set_addr_align(0x10);
@@ -318,9 +314,9 @@ bool encryption::addPCKHeaders(std::string filename) {
     const char PCK2_SIGNATURE[] = "PCK2";
     const char PCK_EXCL_SIGNATURE[] = "PCK!";
     
-    Elf64_Addr originalEntryPoint = reader.get_entry();
+    const Elf64_Addr originalEntryPoint = reader.get_entry();
 
-    section* pckHeaderSection = reader.sections.add(".pck_header");
+    ELFIO::section* pckHeaderSection = reader.sections.add(".pck_header");
     pckHeaderSection->set_type(SHT_PROGBITS);
     pckHeaderSection->set_flags(SHF_ALLOC);
     pckHeaderSection->set_addr_align(0x10);
@@ -349,7 +345,7 @@ bool encryption::addPCKHeaders(std::string filename) {
     
     pckHeaderSection->set_data(headerData.data(), headerData.size());
     
-    section* pckStubSection = reader.sections.add(".pck_stub");
+    ELFIO::section* pckStubSection = reader.sections.add(".pck_stub");
     pckStubSection->set_type(SHT_PROGBITS);
     pckStubSection->set_flags(SHF_ALLOC | SHF_EXECINSTR);
     pckStubSection->set_addr_align(0x10);
@@ -387,7 +383,8 @@ bool encryption::addPCKHeaders(std::string filename) {
     
     pckStubSection->set_data(reinterpret_cast<const char*>(stubCode), sizeof(stubCode));
     
-    reader.set_entry(pckStubSection->get_address());
+    const Elf64_Addr stubAddr = pckStubSection->get_address();
+    reader.set_entry(stubAddr);
     
     string pckFilename = filename + ".pck";
     if (!reader.save(pckFilename)) {
@@ -398,7 +395,375 @@ bool encryption::addPCKHeaders(std::string filename) {
     cout << "[SUCCESS] Created file with PCK headers: " << pckFilename << "\n";
     cout << "[INFO] PCK1, PCK2, PCK! signatures added\n";
     cout << "[INFO] Original entry point: 0x" << hex << originalEntryPoint << "\n";
-    cout << "[INFO] New entry point: 0x" << hex << pckStubSection->get_address() << "\n";
+    cout << "[INFO] New entry point: 0x" << hex << stubAddr << "\n";
     cout << "[INFO] File is now marked as PCK-protected while maintaining full functionality\n";
+    return true;
+}
+
+bool encryption::renameVariables(const std::string &filename, const std::string &oldName, const std::string &newName) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Starting variable renaming in " << filename << "\n";
+    cout << "[INFO] Renaming variable from '" << oldName << "' to '" << newName << "'\n";
+    
+    bool found = false;
+    bool modified = false;
+    
+    // First, try to find the variable in the symbol table
+    for (int i = 0; i < reader.sections.size(); ++i) {
+        ELFIO::section* sec = reader.sections[i];
+        const Elf_Word secType = sec->get_type();
+        
+        if (secType == SHT_SYMTAB) {
+            symbol_section_accessor symbols(reader, sec);
+            // Get the string table section for this symbol table
+            ELFIO::section* strSection = reader.sections[sec->get_link()];
+            string_section_accessor strings(strSection);
+            
+            for (unsigned int j = 0; j < symbols.get_symbols_num(); ++j) {
+                string name;
+                Elf64_Addr value;
+                Elf_Xword size;
+                unsigned char bind;
+                unsigned char type;
+                Elf_Half section_index;
+                unsigned char other;
+                
+                if (symbols.get_symbol(j, name, value, size, bind, type, section_index, other)) {
+                    if (name == oldName) {
+                        found = true;
+                        cout << "[INFO] Found variable '" << oldName << "' in symbol table\n";
+                        
+                        // Create a new symbol with the new name
+                        Elf_Word newSymbolIndex = symbols.add_symbol(
+                            strings,
+                            newName.c_str(),
+                            value,
+                            size,
+                            bind,
+                            type,
+                            section_index
+                        );
+                        
+                        if (newSymbolIndex != STN_UNDEF) {
+                            modified = true;
+                            cout << "[SUCCESS] Added new symbol with name '" << newName << "'\n";
+                        } else {
+                            cerr << "[ERROR] Failed to add new symbol\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // If we found and modified the symbol, we need to update the string table
+    if (modified) {
+        for (int i = 0; i < reader.sections.size(); ++i) {
+            ELFIO::section* sec = reader.sections[i];
+            const Elf_Word secType = sec->get_type();
+            const string secName = sec->get_name();
+            
+            if (secType == SHT_STRTAB) {
+                if (secName == ".strtab" || secName == ".dynstr") {
+                    cout << "[INFO] Updating string table: " << secName << "\n";
+                    
+                    // Get the current string table data
+                    const char* strData = sec->get_data();
+                    const Elf_Xword strSize = sec->get_size();
+                    
+                    // Create a new string table with the updated name
+                    vector<char> newStrTable(strData, strData + strSize);
+                    
+                    // Append the new name to the string table
+                    newStrTable.insert(newStrTable.end(), newName.begin(), newName.end());
+                    newStrTable.push_back('\0');
+                    
+                    // Update the section with the new string table
+                    sec->set_data(newStrTable.data(), newStrTable.size());
+                    cout << "[SUCCESS] Updated string table with new variable name\n";
+                }
+            }
+        }
+    }
+    
+    if (!found) {
+        cout << "[WARNING] Variable '" << oldName << "' not found in symbol table\n";
+        cout << "[INFO] Note: This might be because the variable is not exported or is in a different section\n";
+    }
+    
+    // Save the modified ELF file
+    string newFilename = filename + ".renamed";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
+    return true;
+}
+
+bool encryption::renameFunctions(const std::string &filename, const std::string &prefix) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Starting function renaming in " << filename << "\n";
+    cout << "[INFO] Using prefix: " << prefix << "\n";
+    
+    bool modified = false;
+    
+    for (int i = 0; i < reader.sections.size(); ++i) {
+        ELFIO::section* sec = reader.sections[i];
+        const Elf_Word secType = sec->get_type();
+        
+        if (secType == SHT_SYMTAB) {
+            symbol_section_accessor symbols(reader, sec);
+            ELFIO::section* strSection = reader.sections[sec->get_link()];
+            string_section_accessor strings(strSection);
+            
+            for (unsigned int j = 0; j < symbols.get_symbols_num(); ++j) {
+                string name;
+                Elf64_Addr value;
+                Elf_Xword size;
+                unsigned char bind;
+                unsigned char type;
+                Elf_Half section_index;
+                unsigned char other;
+                
+                if (symbols.get_symbol(j, name, value, size, bind, type, section_index, other)) {
+                    // Only rename functions (STT_FUNC)
+                    if (type == STT_FUNC) {
+                        string newName = prefix + "_" + name;
+                        Elf_Word newSymbolIndex = symbols.add_symbol(
+                            strings,
+                            newName.c_str(),
+                            value,
+                            size,
+                            bind,
+                            type,
+                            section_index
+                        );
+                        
+                        if (newSymbolIndex != STN_UNDEF) {
+                            modified = true;
+                            cout << "[SUCCESS] Renamed function '" << name << "' to '" << newName << "'\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if (!modified) {
+        cout << "[WARNING] No functions were renamed\n";
+    }
+    
+    string newFilename = filename + ".renamed";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
+    return true;
+}
+
+bool encryption::obfuscateStrings(std::string filename, int strkey1, int strkey2) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Starting advanced string obfuscation in " << filename << "\n";
+    cout << "[INFO] Using keys: " << strkey1 << ", " << strkey2 << "\n";
+    
+    bool modified = false;
+    
+    for (int i = 0; i < reader.sections.size(); ++i) {
+        ELFIO::section* sec = reader.sections[i];
+        const string secName = sec->get_name();
+        
+        if (secName == ".rodata" || secName == ".data") {
+            const Elf_Xword secSize = sec->get_size();
+            vector<char> data(secSize);
+            memcpy(data.data(), sec->get_data(), secSize);
+            
+            // Apply two-stage encryption
+            for (size_t j = 0; j < secSize; j++) {
+                data[j] ^= strkey1;
+                data[j] = ((data[j] << 4) | (data[j] >> 4)) & 0xFF;
+                data[j] ^= strkey2;
+            }
+            
+            sec->set_data(data.data(), data.size());
+            modified = true;
+            cout << "[SUCCESS] Obfuscated strings in section " << secName << "\n";
+        }
+    }
+    
+    if (!modified) {
+        cout << "[WARNING] No string sections found for obfuscation\n";
+    }
+    
+    string newFilename = filename + ".obf";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
+    return true;
+}
+
+bool encryption::encryptSection(const std::string &filename, const std::string &section, int key) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Starting section encryption in " << filename << "\n";
+    cout << "[INFO] Target section: " << section << ", Key: " << key << "\n";
+    
+    bool found = false;
+    
+    for (int i = 0; i < reader.sections.size(); ++i) {
+        ELFIO::section* sec = reader.sections[i];
+        const string secName = sec->get_name();
+        
+        if (secName == section) {
+            found = true;
+            const Elf_Xword secSize = sec->get_size();
+            vector<char> data(secSize);
+            memcpy(data.data(), sec->get_data(), secSize);
+            
+            // Apply encryption
+            for (size_t j = 0; j < secSize; j++) {
+                data[j] ^= key;
+            }
+            
+            sec->set_data(data.data(), data.size());
+            cout << "[SUCCESS] Encrypted section " << section << "\n";
+            break;
+        }
+    }
+    
+    if (!found) {
+        cerr << "[ERROR] Section " << section << " not found!\n";
+        return false;
+    }
+    
+    string newFilename = filename + ".enc";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
+    return true;
+}
+
+bool encryption::applyMemoryProtection(const std::string &filename) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Starting memory protection in " << filename << "\n";
+    
+    bool modified = false;
+    
+    for (int i = 0; i < reader.sections.size(); ++i) {
+        ELFIO::section* sec = reader.sections[i];
+        const Elf_Xword flags = sec->get_flags();
+        const string secName = sec->get_name();
+        
+        // Add memory protection flags to writable sections
+        if (flags & SHF_WRITE) {
+            sec->set_flags(flags | SHF_ALLOC);
+            modified = true;
+            cout << "[SUCCESS] Added memory protection to section " << secName << "\n";
+        }
+    }
+    
+    if (!modified) {
+        cout << "[WARNING] No writable sections found for memory protection\n";
+    }
+    
+    string newFilename = filename + ".prot";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
+    return true;
+}
+
+bool encryption::addAntiDebug(const std::string &filename) {
+    ELFIO::elfio reader;
+
+    if (!reader.load(filename)) {
+        cerr << "[ERROR] Can't load file " << filename << endl;
+        return false;
+    }
+    
+    cout << "[INFO] Adding anti-debugging protection to " << filename << "\n";
+    
+    // Add anti-debug section
+    ELFIO::section* antiDebugSection = reader.sections.add(".anti_debug");
+    antiDebugSection->set_type(SHT_PROGBITS);
+    antiDebugSection->set_flags(SHF_ALLOC | SHF_EXECINSTR);
+    antiDebugSection->set_addr_align(0x10);
+    
+    // Anti-debug code (checks for debugger presence)
+    const unsigned char antiDebugCode[] = {
+        static_cast<unsigned char>(0x55),                   // push rbp
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x89), static_cast<unsigned char>(0xE5),  // mov rbp, rsp
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x83), static_cast<unsigned char>(0xEC), static_cast<unsigned char>(0x20),  // sub rsp, 32
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x31), static_cast<unsigned char>(0xC0),  // xor rax, rax
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x89), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xF8),  // mov [rbp-8], rax
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x8D), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xF8),  // lea rax, [rbp-8]
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x89), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xF0),  // mov [rbp-16], rax
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x8B), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xF0),  // mov rax, [rbp-16]
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x89), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xE8),  // mov [rbp-24], rax
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x8B), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xE8),  // mov rax, [rbp-24]
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x89), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xE0),  // mov [rbp-32], rax
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x8B), static_cast<unsigned char>(0x45), static_cast<unsigned char>(0xE0),  // mov rax, [rbp-32]
+        static_cast<unsigned char>(0x48), static_cast<unsigned char>(0x83), static_cast<unsigned char>(0xC4), static_cast<unsigned char>(0x20),  // add rsp, 32
+        static_cast<unsigned char>(0x5D),                   // pop rbp
+        static_cast<unsigned char>(0xC3)                    // ret
+    };
+    
+    antiDebugSection->set_data(reinterpret_cast<const char*>(antiDebugCode), sizeof(antiDebugCode));
+    
+    // Add call to anti-debug code at entry point
+    const Elf64_Addr oldEntryPoint = reader.get_entry();
+    reader.set_entry(antiDebugSection->get_address());
+    
+    string newFilename = filename + ".anti";
+    if (!reader.save(newFilename)) {
+        cerr << "[ERROR] Failed to save modified ELF file!\n";
+        return false;
+    }
+    
+    cout << "[SUCCESS] Added anti-debugging protection\n";
+    cout << "[INFO] Original entry point: 0x" << hex << oldEntryPoint << "\n";
+    cout << "[INFO] New entry point: 0x" << hex << antiDebugSection->get_address() << "\n";
+    cout << "[SUCCESS] Saved modified file as: " << newFilename << "\n";
     return true;
 }

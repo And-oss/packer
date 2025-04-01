@@ -6,10 +6,10 @@
 #include <sys/stat.h>
 
 #include "elfio/elfio.hpp"
-
 #include "src/headers/Encryption.h"
 
 using namespace std;
+using namespace ELFIO;  // Add this line to use ELFIO types directly
 
 
 // [BUILD]  g++ packer.cpp src/Encryption.cpp -o packer -std=c++17 -lkeystone -ldl
@@ -23,33 +23,35 @@ int NOPInjectionELF(const string &filename, int count_nops = 10, uint64_t target
     }
 
     for (int i = 0; i < reader.sections.size(); ++i) {
-        ELFIO::section *sec = reader.sections[i];
+        section* sec = reader.sections[i];
+        const string secName = sec->get_name();
 
-        if (sec->get_name() == ".text") {
+        if (secName == ".text") {
             cout << "[INFO] FOUND .text section\n";
 
-            vector<char> data(sec->get_size());
-            memcpy(data.data(), sec->get_data(), sec->get_size());
+            const Elf_Xword secSize = sec->get_size();
+            vector<char> data(secSize);
+            memcpy(data.data(), sec->get_data(), secSize);
 
-            streampos offset = sec->get_offset();
-            uint64_t text_vaddr = sec->get_address();
+            const Elf64_Off offset = sec->get_offset();
+            const Elf64_Addr text_vaddr = sec->get_address();
 
             if (patch_end) {
                 cout << "[MODIFY] Overwriting last " << count_nops << " bytes of .text with NOPs\n";
-                for (int i = sec->get_size() - count_nops; i < sec->get_size(); ++i) {
+                for (size_t i = secSize - count_nops; i < secSize; ++i) {
                     data[i] = '\x90';
                 }
             } else if (target_addr != 0) {
-                uint64_t patch_offset = target_addr - text_vaddr;
-                if (patch_offset >= sec->get_size()) {
+                const uint64_t patch_offset = target_addr - text_vaddr;
+                if (patch_offset >= secSize) {
                     cerr << "[ERROR] Target address is outside .text section!\n";
                     return -1;
                 }
 
                 cout << "[MODIFY] Injecting " << count_nops << " NOPs at address 0x"
-                          << hex << target_addr << " (offset: 0x" << patch_offset << ")\n";
+                     << hex << target_addr << " (offset: 0x" << patch_offset << ")\n";
 
-                for (int i = 0; i < count_nops && (patch_offset + i) < sec->get_size(); ++i) {
+                for (int i = 0; i < count_nops && (patch_offset + i) < secSize; ++i) {
                     data[patch_offset + i] = '\x90';
                 }
             } else {
@@ -93,10 +95,12 @@ bool isPCKProtected(const string &filename) {
 
     // Look for .PCK section
     for (int i = 0; i < reader.sections.size(); ++i) {
-        ELFIO::section *sec = reader.sections[i];
-        if (sec->get_name() == ".PCK") {
-            // Verify the PCK signature
-            if (sec->get_size() >= 8) {
+        section* sec = reader.sections[i];
+        const string secName = sec->get_name();
+        
+        if (secName == ".PCK") {
+            const Elf_Xword secSize = sec->get_size();
+            if (secSize >= 8) {
                 const char* data = sec->get_data();
                 return (memcmp(data, "PCK", 3) == 0 && 
                        data[3] == static_cast<char>(0xFF) && 
@@ -107,7 +111,7 @@ bool isPCKProtected(const string &filename) {
 
     // Look for .unpacker section as a fallback
     for (int i = 0; i < reader.sections.size(); ++i) {
-        ELFIO::section *sec = reader.sections[i];
+        section* sec = reader.sections[i];
         if (sec->get_name() == ".unpacker") {
             return true;
         }
@@ -285,7 +289,8 @@ void printHelp() {
          << "  -strip          Strip all symbol and debug information\n"
          << "  -junk           Insert junk code that doesn't affect functionality\n"
          << "  -complete       Apply a complete set of obfuscations while maintaining functionality\n"
-         << "  -o <filename>   Specify output file (default: replaces the input)\n";
+         << "  -o <filename>   Specify output file (default: replaces the input)\n"
+         << "  -var <old> <new> Rename a specific variable from old name to new name\n";
 }
 
 int main(int argc, char *argv[]) {
@@ -320,6 +325,9 @@ int main(int argc, char *argv[]) {
     bool stripSymbols = false;
     bool junkCode = false;
     bool completeObfuscation = false;
+    bool renameVariable = false;
+    string oldVarName;
+    string newVarName;
 
     uint8_t xorKey = 0xAA; // Default XOR key
     uint8_t key1 = 0xBB;   // Default first key for advanced obfuscation
@@ -462,6 +470,15 @@ int main(int argc, char *argv[]) {
             junkCode = true;
         } else if (arg == "-complete") {
             completeObfuscation = true;
+        } else if (arg == "-var") {
+            if (i + 2 < argc) {
+                renameVariable = true;
+                oldVarName = argv[++i];
+                newVarName = argv[++i];
+            } else {
+                cerr << "[ERROR] Missing old and new variable names after -var\n";
+                return 1;
+            }
         } else if (arg == "-o") {
             if (i + 1 < argc) {
                 outputFileName = argv[++i];
@@ -764,6 +781,15 @@ int main(int argc, char *argv[]) {
     
     if (junkCode) {
         applySingleObfuscation(outputFileName, "junk");
+    }
+
+    if (renameVariable) {
+        cout << "[INFO] Renaming variable '" << oldVarName << "' to '" << newVarName << "'\n";
+        if (!encryption::renameVariables(outputFileName, oldVarName, newVarName)) {
+            cerr << "[ERROR] Failed to rename variable!\n";
+            return 1;
+        }
+        cout << "[SUCCESS] Variable renamed successfully!\n";
     }
 
     // Make the final file executable if we've modified it

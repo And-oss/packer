@@ -42,6 +42,9 @@ namespace encryption {
     // Добавление PCK-заголовков в ELF-файл
     bool addPCKHeaders(std::string filename);
 
+    // Переименование переменных
+    bool renameVariables(const std::string &filename, const std::string &oldName, const std::string &newName);
+
 } // namespace encryption
 
 #endif // ENCRYPTION_H
