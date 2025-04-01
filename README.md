@@ -4,16 +4,16 @@ A sophisticated tool for packing, obfuscating, and protecting ELF binaries. Prov
 
 ## Features
 
-- **UPX-like Packing with PCK Headers**: Compress executables with our proprietary PCK format that completely prevents IDA analysis(in dev)
-- **String Obfuscation**: Multiple methods to encrypt strings
+- UPX-like Packing with PCK Headers
+- String Obfuscation
   - Basic string encryption (simple XOR)
-  - Advanced multi-layered string encryption (IDA-resistant)
-- **Section Encryption**: Encrypt any section of the ELF file
-- **Memory Protection**: Hide and protect data in memory at runtime(in dev)
-- **Code Virtualization**: Convert native code to custom bytecode executed by a virtual machine(in dev)
-- **Anti-Debugging**: Multiple techniques to prevent runtime analysis
-- **NOP Injection**: Add noise to code sections
-- **Full Protection Mode**: Apply all protections in an optimal sequence(in dev)
+  - Advanced multi-layered string encryption
+- Section Encryption
+- Memory Protection
+- Code Virtualization
+- Anti-Debugging
+- NOP Injection
+- Full Protection Mode
 
 ## Building
 
